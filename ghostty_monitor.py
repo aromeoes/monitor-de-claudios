@@ -5,6 +5,8 @@ import subprocess
 import os
 import re
 import time
+import glob
+import random
 from datetime import datetime
 
 from rich.console import Console
@@ -12,6 +14,25 @@ from rich.live import Live
 from rich.panel import Panel
 from rich.text import Text
 from rich.columns import Columns
+
+
+# Track previous statuses to detect transitions
+_previous_statuses: dict[int, str] = {}
+
+# Locate audio files relative to this script
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_FINISHED_SOUNDS = glob.glob(os.path.join(_SCRIPT_DIR, "audios", "finished", "*.mp3"))
+
+
+def play_finished_sound():
+    """Play a random sound from audios/finished/ (non-blocking)."""
+    if _FINISHED_SOUNDS:
+        sound = random.choice(_FINISHED_SOUNDS)
+        subprocess.Popen(
+            ["afplay", sound],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
 
 
 def run_cmd(cmd: str) -> str:
@@ -322,6 +343,13 @@ def gather_tabs():
             tab["status"] = status
             tab["bash_cmd"] = bash_cmd
             tab["bg_procs"] = bg_procs
+
+            # Play sound when a tab transitions to "waiting"
+            key = tab["shell_pid"]
+            prev = _previous_statuses.get(key)
+            if prev in ("active", "thinking") and status == "waiting":
+                play_finished_sound()
+            _previous_statuses[key] = status
 
     # Batch-fetch cwds
     cwds = get_cwds(shell_pids)
